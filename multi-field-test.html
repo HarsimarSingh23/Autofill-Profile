@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FormSpy — Multi-Field Test (Experience / Education)</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --cream: #f5f0e8;
+      --ink: #1a1208;
+      --rust: #c84b2f;
+      --gold: #d4a843;
+      --sage: #5a7a5e;
+      --muted: #8a7f72;
+      --border: #d8cfc4;
+      --surface: #fdfaf5;
+    }
+
+    body {
+      background: var(--cream);
+      color: var(--ink);
+      font-family: 'DM Mono', ui-monospace, monospace;
+      padding: 48px 0 120px;
+    }
+
+    .page-wrap { max-width: 820px; margin: 0 auto; padding: 0 40px; }
+
+    h1 {
+      font-size: 36px;
+      font-weight: 300;
+      margin-bottom: 8px;
+      color: var(--ink);
+    }
+    h1 em { font-style: italic; color: var(--rust); }
+
+    .subtitle {
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 48px;
+      line-height: 1.7;
+    }
+
+    /* ── Entry card ─────────────────────────────────────────────────────── */
+    .entry-section { margin-bottom: 48px; }
+
+    .entry-section-title {
+      font-size: 13px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--rust);
+      margin-bottom: 16px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .entry-list { display: flex; flex-direction: column; gap: 20px; }
+
+    .entry-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 24px;
+    }
+
+    .entry-card-num {
+      font-size: 10px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 16px;
+    }
+
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .grid-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 14px; }
+    .span-2 { grid-column: span 2; }
+    .span-4 { grid-column: span 4; }
+
+    @media (max-width: 600px) {
+      .grid-2, .grid-4 { grid-template-columns: 1fr; }
+      .span-2, .span-4 { grid-column: span 1; }
+    }
+
+    .field { display: flex; flex-direction: column; gap: 7px; }
+
+    label {
+      font-size: 10px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    input[type="text"],
+    input[type="number"],
+    input[type="date"],
+    input[type="url"],
+    textarea,
+    select {
+      width: 100%;
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 10px 13px;
+      font-family: inherit;
+      font-size: 13px;
+      color: var(--ink);
+      transition: border-color 0.15s, box-shadow 0.15s;
+      appearance: none;
+    }
+
+    input:focus, textarea:focus, select:focus {
+      outline: none;
+      border-color: var(--rust);
+      box-shadow: 0 0 0 3px rgba(200,75,47,0.07);
+    }
+
+    textarea { resize: vertical; min-height: 72px; line-height: 1.6; }
+
+    select {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' fill='none'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%238a7f72' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+      padding-right: 34px;
+      cursor: pointer;
+    }
+
+    /* ── Add button ─────────────────────────────────────────────────────── */
+    .add-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 12px;
+      background: none;
+      border: 1px dashed var(--border);
+      border-radius: 4px;
+      padding: 10px 20px;
+      font-family: inherit;
+      font-size: 11px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--muted);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .add-btn:hover { border-color: var(--rust); color: var(--rust); }
+
+    /* ── Debug overlay ──────────────────────────────────────────────────── */
+    #debug-overlay {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      width: 340px;
+      max-height: 60vh;
+      overflow-y: auto;
+      background: #0d0d0f;
+      color: #e8e8f0;
+      font-family: 'JetBrains Mono', ui-monospace, monospace;
+      font-size: 11px;
+      border-radius: 8px;
+      border: 1px solid #2a2a32;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+      z-index: 9999;
+    }
+
+    #debug-overlay header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      border-bottom: 1px solid #2a2a32;
+      position: sticky;
+      top: 0;
+      background: #0d0d0f;
+    }
+
+    #debug-overlay header span { color: #7fff6e; font-size: 12px; font-weight: bold; }
+    #debug-overlay header button {
+      background: none; border: none; color: #5a5a6e; cursor: pointer; font-size: 13px;
+    }
+
+    #debug-body { padding: 12px 14px; }
+    #debug-body pre {
+      white-space: pre-wrap;
+      word-break: break-word;
+      line-height: 1.6;
+    }
+
+    .dbg-key   { color: #4af0c4; }
+    .dbg-arr   { color: #f0c44a; }
+    .dbg-val   { color: #e8e8f0; }
+    .dbg-null  { color: #5a5a6e; }
+    .dbg-empty { color: #5a5a6e; font-style: italic; }
+  </style>
+</head>
+<body>
+<div class="page-wrap">
+
+  <h1>Multi-field <em>test</em> page</h1>
+  <p class="subtitle">
+    Each section below repeats the same field labels across multiple entries
+    (e.g. three "Company" inputs). FormSpy should store them as
+    <code>pageData["Company"] = ["Acme", "Corp", "Startup"]</code>.
+    Watch the debug panel (bottom-right) update live.
+  </p>
+
+  <!-- ── WORK EXPERIENCE ──────────────────────────────────────────────── -->
+  <section class="entry-section">
+    <div class="entry-section-title">Work Experience</div>
+    <div class="entry-list" id="exp-list">
+
+      <!-- Entry 1 -->
+      <div class="entry-card">
+        <div class="entry-card-num">Entry 01</div>
+        <div class="grid-2">
+          <div class="field">
+            <label for="exp-title-1">Job Title</label>
+            <input type="text" id="exp-title-1" placeholder="e.g. Senior Engineer" />
+          </div>
+          <div class="field">
+            <label for="exp-company-1">Company</label>
+            <input type="text" id="exp-company-1" placeholder="e.g. Acme Corp" />
+          </div>
+          <div class="field">
+            <label for="exp-start-1">Start Year</label>
+            <input type="number" id="exp-start-1" placeholder="2019" min="1970" max="2030" />
+          </div>
+          <div class="field">
+            <label for="exp-end-1">End Year</label>
+            <input type="number" id="exp-end-1" placeholder="2022" min="1970" max="2030" />
+          </div>
+          <div class="field span-2">
+            <label for="exp-desc-1">Description</label>
+            <textarea id="exp-desc-1" placeholder="What did you work on?"></textarea>
+          </div>
+          <div class="field">
+            <label for="exp-location-1">Location</label>
+            <input type="text" id="exp-location-1" placeholder="San Francisco, CA" />
+          </div>
+          <div class="field">
+            <label for="exp-type-1">Employment Type</label>
+            <select id="exp-type-1">
+              <option value="">Select…</option>
+              <option>Full-time</option>
+              <option>Part-time</option>
+              <option>Contract</option>
+              <option>Freelance</option>
+              <option>Internship</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Entry 2 -->
+      <div class="entry-card">
+        <div class="entry-card-num">Entry 02</div>
+        <div class="grid-2">
+          <div class="field">
+            <label for="exp-title-2">Job Title</label>
+            <input type="text" id="exp-title-2" placeholder="e.g. Product Manager" />
+          </div>
+          <div class="field">
+            <label for="exp-company-2">Company</label>
+            <input type="text" id="exp-company-2" placeholder="e.g. Beta Inc" />
+          </div>
+          <div class="field">
+            <label for="exp-start-2">Start Year</label>
+            <input type="number" id="exp-start-2" placeholder="2016" min="1970" max="2030" />
+          </div>
+          <div class="field">
+            <label for="exp-end-2">End Year</label>
+            <input type="number" id="exp-end-2" placeholder="2019" min="1970" max="2030" />
+          </div>
+          <div class="field span-2">
+            <label for="exp-desc-2">Description</label>
+            <textarea id="exp-desc-2" placeholder="What did you work on?"></textarea>
+          </div>
+          <div class="field">
+            <label for="exp-location-2">Location</label>
+            <input type="text" id="exp-location-2" placeholder="New York, NY" />
+          </div>
+          <div class="field">
+            <label for="exp-type-2">Employment Type</label>
+            <select id="exp-type-2">
+              <option value="">Select…</option>
+              <option>Full-time</option>
+              <option>Part-time</option>
+              <option>Contract</option>
+              <option>Freelance</option>
+              <option>Internship</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Entry 3 -->
+      <div class="entry-card">
+        <div class="entry-card-num">Entry 03</div>
+        <div class="grid-2">
+          <div class="field">
+            <label for="exp-title-3">Job Title</label>
+            <input type="text" id="exp-title-3" placeholder="e.g. Data Scientist" />
+          </div>
+          <div class="field">
+            <label for="exp-company-3">Company</label>
+            <input type="text" id="exp-company-3" placeholder="e.g. Gamma Ltd" />
+          </div>
+          <div class="field">
+            <label for="exp-start-3">Start Year</label>
+            <input type="number" id="exp-start-3" placeholder="2013" min="1970" max="2030" />
+          </div>
+          <div class="field">
+            <label for="exp-end-3">End Year</label>
+            <input type="number" id="exp-end-3" placeholder="2016" min="1970" max="2030" />
+          </div>
+          <div class="field span-2">
+            <label for="exp-desc-3">Description</label>
+            <textarea id="exp-desc-3" placeholder="What did you work on?"></textarea>
+          </div>
+          <div class="field">
+            <label for="exp-location-3">Location</label>
+            <input type="text" id="exp-location-3" placeholder="Austin, TX" />
+          </div>
+          <div class="field">
+            <label for="exp-type-3">Employment Type</label>
+            <select id="exp-type-3">
+              <option value="">Select…</option>
+              <option>Full-time</option>
+              <option>Part-time</option>
+              <option>Contract</option>
+              <option>Freelance</option>
+              <option>Internship</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /entry-list -->
+  </section>
+
+  <!-- ── EDUCATION ─────────────────────────────────────────────────────── -->
+  <section class="entry-section">
+    <div class="entry-section-title">Education</div>
+    <div class="entry-list" id="edu-list">
+
+      <!-- Edu 1 -->
+      <div class="entry-card">
+        <div class="entry-card-num">Entry 01</div>
+        <div class="grid-2">
+          <div class="field">
+            <label for="edu-school-1">School / University</label>
+            <input type="text" id="edu-school-1" placeholder="e.g. MIT" />
+          </div>
+          <div class="field">
+            <label for="edu-degree-1">Degree</label>
+            <select id="edu-degree-1">
+              <option value="">Select…</option>
+              <option>High School Diploma</option>
+              <option>Associate's</option>
+              <option>Bachelor's</option>
+              <option>Master's</option>
+              <option>Ph.D.</option>
+              <option>Certificate</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="edu-field-1">Field of Study</label>
+            <input type="text" id="edu-field-1" placeholder="e.g. Computer Science" />
+          </div>
+          <div class="field">
+            <label for="edu-grad-1">Graduation Year</label>
+            <input type="number" id="edu-grad-1" placeholder="2018" min="1950" max="2035" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Edu 2 -->
+      <div class="entry-card">
+        <div class="entry-card-num">Entry 02</div>
+        <div class="grid-2">
+          <div class="field">
+            <label for="edu-school-2">School / University</label>
+            <input type="text" id="edu-school-2" placeholder="e.g. Stanford" />
+          </div>
+          <div class="field">
+            <label for="edu-degree-2">Degree</label>
+            <select id="edu-degree-2">
+              <option value="">Select…</option>
+              <option>High School Diploma</option>
+              <option>Associate's</option>
+              <option>Bachelor's</option>
+              <option>Master's</option>
+              <option>Ph.D.</option>
+              <option>Certificate</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="edu-field-2">Field of Study</label>
+            <input type="text" id="edu-field-2" placeholder="e.g. Machine Learning" />
+          </div>
+          <div class="field">
+            <label for="edu-grad-2">Graduation Year</label>
+            <input type="number" id="edu-grad-2" placeholder="2020" min="1950" max="2035" />
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /edu-list -->
+  </section>
+
+  <!-- ── SKILLS ────────────────────────────────────────────────────────── -->
+  <section class="entry-section">
+    <div class="entry-section-title">Skills</div>
+    <div class="entry-card">
+      <div class="grid-4">
+        <div class="field">
+          <label for="skill-1">Skill</label>
+          <input type="text" id="skill-1" placeholder="JavaScript" />
+        </div>
+        <div class="field">
+          <label for="skill-2">Skill</label>
+          <input type="text" id="skill-2" placeholder="Python" />
+        </div>
+        <div class="field">
+          <label for="skill-3">Skill</label>
+          <input type="text" id="skill-3" placeholder="React" />
+        </div>
+        <div class="field">
+          <label for="skill-4">Skill</label>
+          <input type="text" id="skill-4" placeholder="SQL" />
+        </div>
+        <div class="field">
+          <label for="proficiency-1">Proficiency</label>
+          <select id="proficiency-1">
+            <option value="">Select…</option>
+            <option>Beginner</option>
+            <option>Intermediate</option>
+            <option>Advanced</option>
+            <option>Expert</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="proficiency-2">Proficiency</label>
+          <select id="proficiency-2">
+            <option value="">Select…</option>
+            <option>Beginner</option>
+            <option>Intermediate</option>
+            <option>Advanced</option>
+            <option>Expert</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="proficiency-3">Proficiency</label>
+          <select id="proficiency-3">
+            <option value="">Select…</option>
+            <option>Beginner</option>
+            <option>Intermediate</option>
+            <option>Advanced</option>
+            <option>Expert</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="proficiency-4">Proficiency</label>
+          <select id="proficiency-4">
+            <option value="">Select…</option>
+            <option>Beginner</option>
+            <option>Intermediate</option>
+            <option>Advanced</option>
+            <option>Expert</option>
+          </select>
+        </div>
+        <div class="field span-4">
+          <label for="skill-url-1">Portfolio URL</label>
+          <input type="url" id="skill-url-1" placeholder="https://github.com/you" />
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div><!-- /page-wrap -->
+
+<!-- ── Debug overlay ─────────────────────────────────────────────────────── -->
+<div id="debug-overlay">
+  <header>
+    <span>⬡ FormSpy — pageData</span>
+    <button onclick="document.getElementById('debug-overlay').style.display='none'">✕</button>
+  </header>
+  <div id="debug-body">
+    <pre id="debug-pre"><span class="dbg-empty">waiting for input…</span></pre>
+  </div>
+</div>
+
+<!-- ── Inline tracker (self-contained, no chrome APIs needed for test) ──── -->
+<script>
+  // ─── Exact copies of content.js core logic ────────────────────────────────
+
+  const SELECTOR = [
+    "input:not([type='hidden'])",
+    "input:not([type='submit'])",
+    "input:not([type='button'])",
+    "input:not([type='reset'])",
+    "input:not([type='image'])",
+    "textarea",
+    "select"
+  ].join(", ");
+
+  function getFieldLabel(el) {
+    if (el.id) {
+      const label = document.querySelector(`label[for="${el.id}"]`);
+      if (label?.innerText.trim()) return label.innerText.trim();
+    }
+    const aria = el.getAttribute("aria-label");
+    if (aria?.trim()) return aria.trim();
+    const labelledBy = el.getAttribute("aria-labelledby");
+    if (labelledBy) {
+      const t = document.getElementById(labelledBy)?.innerText.trim();
+      if (t) return t;
+    }
+    const wrapping = el.closest("label");
+    if (wrapping) {
+      const clone = wrapping.cloneNode(true);
+      clone.querySelectorAll("input,select,textarea").forEach(n => n.remove());
+      const t = clone.innerText.trim();
+      if (t) return t;
+    }
+    let parent = el.parentElement;
+    for (let i = 0; i < 5; i++) {
+      if (!parent) break;
+      for (const lbl of parent.querySelectorAll("label")) {
+        if (lbl.contains(el)) continue;
+        if (lbl.querySelector("input,select,textarea")) continue;
+        const t = lbl.innerText.trim();
+        if (t) return t;
+      }
+      const legend = parent.querySelector("legend");
+      if (legend?.innerText.trim()) return legend.innerText.trim();
+      parent = parent.parentElement;
+    }
+    if (el.placeholder?.trim()) return el.placeholder.trim();
+    return el.name || el.id || el.type || "unknown";
+  }
+
+  function sanitizeKey(key) {
+    return key.replace(/\s+/g, " ").replace(/[^\w\s\-\/&]/g, "").trim().slice(0, 60);
+  }
+
+  let labelMap = {};
+
+  function rebuildLabelMap() {
+    labelMap = {};
+    document.querySelectorAll(SELECTOR).forEach(el => {
+      if (["submit","button","reset","image","hidden"].includes(el.type)) return;
+      const lbl = sanitizeKey(getFieldLabel(el)) || "field";
+      if (!labelMap[lbl]) labelMap[lbl] = [];
+      if (!labelMap[lbl].includes(el)) labelMap[lbl].push(el);
+    });
+  }
+
+  function getLabelIndex(el) {
+    const label = sanitizeKey(getFieldLabel(el)) || "field";
+    const arr   = labelMap[label] || [el];
+    const index = arr.indexOf(el);
+    return { label, index: Math.max(index, 0), total: arr.length };
+  }
+
+  const pageData = {};
+  const attached = new WeakSet();
+
+  function getValue(el) {
+    if (el.type === "checkbox") return el.checked;
+    if (el.type === "radio")    return el.checked ? el.value : null;
+    if (el.tagName === "SELECT") return el.options[el.selectedIndex]?.text || el.value;
+    return el.value;
+  }
+
+  function handleChange(el) {
+    const value = getValue(el);
+    if (el.type === "radio" && value === null) return;
+
+    const { label, index, total } = getLabelIndex(el);
+    const isEmpty = value === "" || value === undefined || value === null || value === false;
+
+    if (total === 1) {
+      if (isEmpty) delete pageData[label];
+      else         pageData[label] = value;
+    } else {
+      if (!Array.isArray(pageData[label])) {
+        const prev = pageData[label];
+        pageData[label] = Array(total).fill(null);
+        if (prev !== undefined && prev !== null) pageData[label][0] = prev;
+      }
+      while (pageData[label].length < total) pageData[label].push(null);
+      pageData[label][index] = isEmpty ? null : value;
+
+      const arr = pageData[label];
+      let last = -1;
+      arr.forEach((v, i) => { if (v !== null && v !== undefined) last = i; });
+      if (last === -1) delete pageData[label];
+      else             pageData[label] = arr.slice(0, last + 1);
+    }
+
+    renderDebug();
+  }
+
+  function trackElement(el) {
+    if (attached.has(el)) return;
+    if (["submit","button","reset","image","hidden"].includes(el.type)) return;
+    attached.add(el);
+    el.addEventListener("input",  () => handleChange(el));
+    el.addEventListener("change", () => handleChange(el));
+    el.addEventListener("blur",   () => handleChange(el));
+  }
+
+  function scanAndAttach() {
+    rebuildLabelMap();
+    document.querySelectorAll(SELECTOR).forEach(trackElement);
+  }
+
+  // ─── Debug renderer ───────────────────────────────────────────────────────
+
+  function renderDebug() {
+    const pre = document.getElementById("debug-pre");
+    if (!Object.keys(pageData).length) {
+      pre.innerHTML = '<span class="dbg-empty">waiting for input…</span>';
+      return;
+    }
+
+    let html = "";
+    for (const [key, val] of Object.entries(pageData)) {
+      const k = `<span class="dbg-key">"${escHtml(key)}"</span>`;
+      if (Array.isArray(val)) {
+        const items = val.map((v, i) =>
+          `  ${i}: ${v === null
+            ? '<span class="dbg-null">null</span>'
+            : `<span class="dbg-val">"${escHtml(String(v))}"</span>`}`
+        ).join("\n");
+        html += `${k}: <span class="dbg-arr">[</span>\n${items}\n<span class="dbg-arr">]</span>\n\n`;
+      } else {
+        html += `${k}: <span class="dbg-val">"${escHtml(String(val))}"</span>\n\n`;
+      }
+    }
+    pre.innerHTML = html.trim();
+  }
+
+  function escHtml(s) {
+    return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  }
+
+  // ─── Boot ─────────────────────────────────────────────────────────────────
+  scanAndAttach();
+</script>
+</body>
+</html>

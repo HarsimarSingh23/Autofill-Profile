@@ -1,0 +1,1024 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FormSpy — Test Suite (Multi-field)</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f0f11;
+      --surface: #17171c;
+      --border: #2a2a32;
+      --text: #e0e0ec;
+      --muted: #5a5a6e;
+      --pass: #4ade80;
+      --fail: #f87171;
+      --warn: #fbbf24;
+      --accent: #4af0c4;
+      --label: #a78bfa;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'JetBrains Mono', ui-monospace, 'Cascadia Code', monospace;
+      padding: 40px 0 80px;
+      font-size: 13px;
+    }
+
+    .page { max-width: 860px; margin: 0 auto; padding: 0 32px; }
+
+    /* ── Header ──────────────────────────────────────────────────────── */
+    .header { margin-bottom: 40px; }
+    .header h1 { font-size: 28px; font-weight: 400; color: var(--text); margin-bottom: 6px; }
+    .header h1 em { color: var(--accent); font-style: normal; }
+    .header p  { font-size: 12px; color: var(--muted); line-height: 1.7; }
+
+    /* ── Summary bar ─────────────────────────────────────────────────── */
+    #summary {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px 20px;
+      margin-bottom: 32px;
+      font-size: 12px;
+    }
+    .sum-total  { color: var(--text); }
+    .sum-pass   { color: var(--pass); }
+    .sum-fail   { color: var(--fail); }
+    .sum-badge  {
+      margin-left: auto;
+      padding: 4px 14px;
+      border-radius: 4px;
+      font-size: 11px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      font-weight: bold;
+    }
+    .sum-badge.all-pass { background: rgba(74,222,128,0.12); color: var(--pass); }
+    .sum-badge.has-fail { background: rgba(248,113,113,0.12); color: var(--fail); }
+
+    /* ── Suite / test ────────────────────────────────────────────────── */
+    .suite {
+      margin-bottom: 32px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .suite-title {
+      background: var(--surface);
+      padding: 12px 18px;
+      font-size: 11px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--label);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .test-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      padding: 11px 18px;
+      border-bottom: 1px solid #1e1e24;
+      transition: background 0.1s;
+    }
+    .test-row:last-child { border-bottom: none; }
+    .test-row:hover { background: #1a1a22; }
+
+    .test-icon {
+      flex-shrink: 0;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    .test-icon.pass { color: var(--pass); }
+    .test-icon.fail { color: var(--fail); }
+
+    .test-name { flex: 1; line-height: 1.5; }
+    .test-desc {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 3px;
+      line-height: 1.5;
+    }
+
+    .test-detail {
+      font-size: 11px;
+      font-family: inherit;
+      background: #0b0b0d;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 8px 12px;
+      margin-top: 8px;
+      color: var(--fail);
+      line-height: 1.7;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    /* ── Hidden DOM sandbox ──────────────────────────────────────────── */
+    #sandbox { display: none; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <div class="header">
+    <h1>FormSpy — <em>Multi-field</em> test suite</h1>
+    <p>
+      Tests the core content.js logic for repeated same-label fields (e.g. three "Company" inputs).
+      No Chrome APIs required — all logic is inlined and DOM is built programmatically.
+    </p>
+  </div>
+
+  <div id="summary">
+    <span class="sum-total">Running…</span>
+  </div>
+
+  <div id="results"></div>
+
+</div>
+
+<!-- Hidden DOM sandbox for tests -->
+<div id="sandbox"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════════
+//  SECTION 1 — Content.js logic (verbatim copy, chrome APIs stubbed out)
+// ═══════════════════════════════════════════════════════════════════════════
+
+function getFieldLabel(el) {
+  if (el.id) {
+    const label = document.querySelector(`label[for="${el.id}"]`);
+    if (label?.innerText.trim()) return label.innerText.trim();
+  }
+  const aria = el.getAttribute("aria-label");
+  if (aria?.trim()) return aria.trim();
+  const labelledBy = el.getAttribute("aria-labelledby");
+  if (labelledBy) {
+    const t = document.getElementById(labelledBy)?.innerText.trim();
+    if (t) return t;
+  }
+  const wrapping = el.closest("label");
+  if (wrapping) {
+    const clone = wrapping.cloneNode(true);
+    clone.querySelectorAll("input,select,textarea").forEach(n => n.remove());
+    const t = clone.innerText.trim();
+    if (t) return t;
+  }
+  let parent = el.parentElement;
+  for (let i = 0; i < 5; i++) {
+    if (!parent) break;
+    for (const lbl of parent.querySelectorAll("label")) {
+      if (lbl.contains(el)) continue;
+      if (lbl.querySelector("input,select,textarea")) continue;
+      const t = lbl.innerText.trim();
+      if (t) return t;
+    }
+    const legend = parent.querySelector("legend");
+    if (legend?.innerText.trim()) return legend.innerText.trim();
+    parent = parent.parentElement;
+  }
+  if (el.placeholder?.trim()) return el.placeholder.trim();
+  return el.name || el.id || el.type || "unknown";
+}
+
+function sanitizeKey(key) {
+  return key.replace(/\s+/g, " ").replace(/[^\w\s\-\/&]/g, "").trim().slice(0, 60);
+}
+
+let labelMap = {};
+
+function rebuildLabelMap(root) {
+  // Accepts optional root element; defaults to document for production use.
+  // Tests pass the sandbox root so labels are scoped to the test fixture.
+  const scope = root || document;
+  labelMap = {};
+  const SELECTOR = "input:not([type='hidden']):not([type='submit']):not([type='button']):not([type='reset']):not([type='image']), textarea, select";
+  scope.querySelectorAll(SELECTOR).forEach(el => {
+    if (["submit","button","reset","image","hidden"].includes(el.type)) return;
+    const lbl = sanitizeKey(getFieldLabel(el)) || "field";
+    if (!labelMap[lbl]) labelMap[lbl] = [];
+    if (!labelMap[lbl].includes(el)) labelMap[lbl].push(el);
+  });
+}
+
+function getLabelIndex(el) {
+  const label = sanitizeKey(getFieldLabel(el)) || "field";
+  const arr   = labelMap[label] || [el];
+  const index = arr.indexOf(el);
+  return { label, index: Math.max(index, 0), total: arr.length };
+}
+
+function getValue(el) {
+  if (el.type === "checkbox") return el.checked;
+  if (el.type === "radio")    return el.checked ? el.value : null;
+  if (el.tagName === "SELECT") return el.options[el.selectedIndex]?.text || el.value;
+  return el.value;
+}
+
+// pageData is reset per-test via resetPageData()
+let pageData = {};
+
+function resetPageData() { pageData = {}; }
+
+function handleChange(el) {
+  const value = getValue(el);
+  if (el.type === "radio" && value === null) return;
+
+  const { label, index, total } = getLabelIndex(el);
+  const isEmpty = value === "" || value === undefined || value === null || value === false;
+
+  if (total === 1) {
+    if (isEmpty) delete pageData[label];
+    else         pageData[label] = value;
+  } else {
+    if (!Array.isArray(pageData[label])) {
+      const prev = pageData[label];
+      pageData[label] = Array(total).fill(null);
+      if (prev !== undefined && prev !== null) pageData[label][0] = prev;
+    }
+    while (pageData[label].length < total) pageData[label].push(null);
+    pageData[label][index] = isEmpty ? null : value;
+
+    const arr = pageData[label];
+    let last = -1;
+    arr.forEach((v, i) => { if (v !== null && v !== undefined) last = i; });
+    if (last === -1) delete pageData[label];
+    else             pageData[label] = arr.slice(0, last + 1);
+  }
+}
+
+// Autofill helpers (for autofill round-trip tests)
+function tokenize(str) {
+  return str.toLowerCase().replace(/[^a-z0-9\s]/g, " ").trim().split(/\s+/).filter(Boolean);
+}
+function similarity(a, b) {
+  const ta = new Set(tokenize(a));
+  const tb = new Set(tokenize(b));
+  if (!ta.size || !tb.size) return 0;
+  let overlap = 0;
+  ta.forEach(t => { if (tb.has(t)) overlap++; });
+  return overlap / Math.max(ta.size, tb.size);
+}
+function findBestMatch(fieldLabel, savedData) {
+  const THRESHOLD = 0.5;
+  let bestKey = null, bestScore = 0;
+  for (const savedKey of Object.keys(savedData)) {
+    const score = similarity(fieldLabel, savedKey);
+    if (score > bestScore) { bestScore = score; bestKey = savedKey; }
+  }
+  return bestScore >= THRESHOLD ? { key: bestKey, value: savedData[bestKey] } : null;
+}
+function autofillElement(el, value) {
+  if (typeof value === "boolean") {
+    if (el.type === "checkbox") { el.checked = value; }
+    return;
+  }
+  if (el.tagName === "SELECT") {
+    for (const opt of el.options) {
+      if (opt.text.toLowerCase() === String(value).toLowerCase() ||
+          opt.value.toLowerCase() === String(value).toLowerCase()) {
+        el.value = opt.value;
+        break;
+      }
+    }
+    return;
+  }
+  el.value = value;
+}
+function runAutofill(savedData) {
+  if (!savedData || !Object.keys(savedData).length) return;
+  for (const [pageLabel, els] of Object.entries(labelMap)) {
+    const match = findBestMatch(pageLabel, savedData);
+    if (!match) continue;
+    const savedValue = match.value;
+    if (Array.isArray(savedValue)) {
+      savedValue.forEach((val, i) => {
+        if (val == null) return;
+        const el = els[i];
+        if (!el || el.value?.trim()) return;
+        autofillElement(el, val);
+      });
+    } else {
+      els.forEach((el, i) => {
+        if (el.value?.trim()) return;
+        if (i > 0 && el.type !== "radio") return;
+        autofillElement(el, savedValue);
+      });
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  SECTION 2 — Minimal test framework
+// ═══════════════════════════════════════════════════════════════════════════
+
+const suites   = [];
+let currentSuite = null;
+
+function describe(name, fn) {
+  currentSuite = { name, tests: [] };
+  suites.push(currentSuite);
+  fn();
+  currentSuite = null;
+}
+
+function it(name, fn) {
+  const test = { name, status: "pending", error: null, detail: "" };
+  currentSuite.tests.push(test);
+  try {
+    fn();
+    test.status = "pass";
+  } catch (e) {
+    test.status = "fail";
+    test.error  = e.message || String(e);
+    test.detail = e.stack   || "";
+  }
+}
+
+function expect(actual) {
+  return {
+    toBe(expected) {
+      if (actual !== expected) throw new Error(
+        `Expected ${JSON.stringify(expected)}\nReceived ${JSON.stringify(actual)}`
+      );
+    },
+    toEqual(expected) {
+      const a = JSON.stringify(actual), b = JSON.stringify(expected);
+      if (a !== b) throw new Error(
+        `Expected ${b}\nReceived ${a}`
+      );
+    },
+    toBeNull() {
+      if (actual !== null) throw new Error(
+        `Expected null\nReceived ${JSON.stringify(actual)}`
+      );
+    },
+    toBeTruthy() {
+      if (!actual) throw new Error(
+        `Expected truthy, received ${JSON.stringify(actual)}`
+      );
+    },
+    toBeFalsy() {
+      if (actual) throw new Error(
+        `Expected falsy, received ${JSON.stringify(actual)}`
+      );
+    },
+    toBeUndefined() {
+      if (actual !== undefined) throw new Error(
+        `Expected undefined\nReceived ${JSON.stringify(actual)}`
+      );
+    },
+    toHaveLength(n) {
+      if (!actual || actual.length !== n) throw new Error(
+        `Expected length ${n}\nReceived length ${actual ? actual.length : "N/A"}`
+      );
+    }
+  };
+}
+
+// ─── Sandbox helpers ──────────────────────────────────────────────────────
+
+function mkInput(type, labelText, opts = {}) {
+  const wrap = document.createElement("div");
+  const id   = `t-${Math.random().toString(36).slice(2)}`;
+  const lbl  = document.createElement("label");
+  lbl.htmlFor = id;
+  lbl.textContent = labelText;
+
+  let el;
+  if (type === "select") {
+    el = document.createElement("select");
+    const empty = document.createElement("option");
+    empty.value = "";
+    empty.textContent = "";
+    el.appendChild(empty);
+    (opts.options || []).forEach(o => {
+      const opt = document.createElement("option");
+      opt.value = o;
+      opt.textContent = o;
+      el.appendChild(opt);
+    });
+  } else {
+    el = document.createElement("input");
+    el.type = type;
+    if (opts.value !== undefined) el.value = opts.value;
+  }
+  el.id = id;
+  wrap.appendChild(lbl);
+  wrap.appendChild(el);
+  return { wrap, el };
+}
+
+function setupSandbox(buildFn) {
+  const sandbox = document.getElementById("sandbox");
+  sandbox.innerHTML = "";
+  buildFn(sandbox);
+  resetPageData();
+  rebuildLabelMap(sandbox);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  SECTION 3 — Tests
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── 1. Label extraction ───────────────────────────────────────────────────
+
+describe("Label extraction", () => {
+
+  it("extracts label via <label for>", () => {
+    setupSandbox(sb => {
+      const { wrap } = mkInput("text", "Full Name");
+      sb.appendChild(wrap);
+    });
+    const el = document.getElementById("sandbox").querySelector("input");
+    expect(sanitizeKey(getFieldLabel(el))).toBe("Full Name");
+  });
+
+  it("extracts label via aria-label", () => {
+    setupSandbox(sb => {
+      const el = document.createElement("input");
+      el.type = "text";
+      el.setAttribute("aria-label", "Email Address");
+      sb.appendChild(el);
+    });
+    const el = document.getElementById("sandbox").querySelector("input");
+    expect(sanitizeKey(getFieldLabel(el))).toBe("Email Address");
+  });
+
+  it("falls back to placeholder when no label exists", () => {
+    setupSandbox(sb => {
+      const el = document.createElement("input");
+      el.type = "text";
+      el.placeholder = "Enter your city";
+      sb.appendChild(el);
+    });
+    const el = document.getElementById("sandbox").querySelector("input");
+    expect(sanitizeKey(getFieldLabel(el))).toBe("Enter your city");
+  });
+
+  it("sanitizeKey collapses whitespace and strips special chars", () => {
+    expect(sanitizeKey("  Job   Title! ")).toBe("Job Title");
+    expect(sanitizeKey("School / University")).toBe("School / University");
+    expect(sanitizeKey("Company & Org")).toBe("Company & Org");
+  });
+
+  it("sanitizeKey truncates at 60 characters", () => {
+    const long = "A".repeat(80);
+    expect(sanitizeKey(long).length).toBe(60);
+  });
+
+});
+
+// ── 2. rebuildLabelMap groups duplicate labels ────────────────────────────
+
+describe("rebuildLabelMap — duplicate label grouping", () => {
+
+  it("groups 3 inputs sharing the same label 'Company' into one array", () => {
+    setupSandbox(sb => {
+      for (let i = 1; i <= 3; i++) {
+        const { wrap } = mkInput("text", "Company");
+        sb.appendChild(wrap);
+      }
+    });
+    expect(labelMap["Company"]).toHaveLength(3);
+  });
+
+  it("keeps single-label fields as length-1 array", () => {
+    setupSandbox(sb => {
+      const { wrap } = mkInput("text", "Email Address");
+      sb.appendChild(wrap);
+    });
+    expect(labelMap["Email Address"]).toHaveLength(1);
+  });
+
+  it("handles 5 identical 'Skill' inputs", () => {
+    setupSandbox(sb => {
+      for (let i = 0; i < 5; i++) {
+        const { wrap } = mkInput("text", "Skill");
+        sb.appendChild(wrap);
+      }
+    });
+    expect(labelMap["Skill"]).toHaveLength(5);
+  });
+
+  it("excludes hidden/submit/button inputs from the map", () => {
+    setupSandbox(sb => {
+      const hidden = document.createElement("input");
+      hidden.type  = "hidden";
+      hidden.id    = "secret";
+      sb.appendChild(hidden);
+      const submit = document.createElement("input");
+      submit.type  = "submit";
+      sb.appendChild(submit);
+      const { wrap } = mkInput("text", "Visible Field");
+      sb.appendChild(wrap);
+    });
+    expect(labelMap["Visible Field"]).toHaveLength(1);
+    expect(labelMap["secret"]).toBeUndefined();
+  });
+
+});
+
+// ── 3. getLabelIndex returns correct position ────────────────────────────
+
+describe("getLabelIndex — positional index", () => {
+
+  it("returns index 0, 1, 2 for three 'Company' inputs in DOM order", () => {
+    const els = [];
+    setupSandbox(sb => {
+      for (let i = 1; i <= 3; i++) {
+        const { wrap, el } = mkInput("text", "Company");
+        sb.appendChild(wrap);
+        els.push(el);
+      }
+    });
+    expect(getLabelIndex(els[0]).index).toBe(0);
+    expect(getLabelIndex(els[1]).index).toBe(1);
+    expect(getLabelIndex(els[2]).index).toBe(2);
+  });
+
+  it("reports total === 3 for each of the three elements", () => {
+    const els = [];
+    setupSandbox(sb => {
+      for (let i = 0; i < 3; i++) {
+        const { wrap, el } = mkInput("text", "Job Title");
+        sb.appendChild(wrap);
+        els.push(el);
+      }
+    });
+    els.forEach(el => expect(getLabelIndex(el).total).toBe(3));
+  });
+
+  it("single-label field has index 0 and total 1", () => {
+    let el;
+    setupSandbox(sb => {
+      const r = mkInput("text", "Unique Label");
+      sb.appendChild(r.wrap);
+      el = r.el;
+    });
+    const { index, total } = getLabelIndex(el);
+    expect(index).toBe(0);
+    expect(total).toBe(1);
+  });
+
+});
+
+// ── 4. handleChange — array storage ──────────────────────────────────────
+
+describe("handleChange — multi-field array population", () => {
+
+  it("stores three 'Company' values as an array at correct indices", () => {
+    const els = [];
+    setupSandbox(sb => {
+      for (let i = 0; i < 3; i++) {
+        const { wrap, el } = mkInput("text", "Company");
+        sb.appendChild(wrap);
+        els.push(el);
+      }
+    });
+
+    els[0].value = "Acme";
+    handleChange(els[0]);
+    els[1].value = "Beta Inc";
+    handleChange(els[1]);
+    els[2].value = "Gamma Ltd";
+    handleChange(els[2]);
+
+    expect(pageData["Company"]).toEqual(["Acme", "Beta Inc", "Gamma Ltd"]);
+  });
+
+  it("stores single-label field as scalar, not array", () => {
+    let el;
+    setupSandbox(sb => {
+      const r = mkInput("text", "Email");
+      sb.appendChild(r.wrap);
+      el = r.el;
+    });
+    el.value = "jane@example.com";
+    handleChange(el);
+    expect(pageData["Email"]).toBe("jane@example.com");
+  });
+
+  it("filling only field[1] stores array with null at [0]", () => {
+    const els = [];
+    setupSandbox(sb => {
+      for (let i = 0; i < 3; i++) {
+        const { wrap, el } = mkInput("text", "Start Year");
+        sb.appendChild(wrap);
+        els.push(el);
+      }
+    });
+    els[1].value = "2019";
+    handleChange(els[1]);
+    expect(pageData["Start Year"]).toEqual([null, "2019"]);
+  });
+
+  it("filling field[0] then field[2] leaves [1] as null", () => {
+    const els = [];
+    setupSandbox(sb => {
+      for (let i = 0; i < 3; i++) {
+        const { wrap, el } = mkInput("text", "End Year");
+        sb.appendChild(wrap);
+        els.push(el);
+      }
+    });
+    els[0].value = "2015";
+    handleChange(els[0]);
+    els[2].value = "2022";
+    handleChange(els[2]);
+    expect(pageData["End Year"]).toEqual(["2015", null, "2022"]);
+  });
+
+  it("clearing the last filled element prunes trailing null and keeps earlier values", () => {
+    const els = [];
+    setupSandbox(sb => {
+      for (let i = 0; i < 3; i++) {
+        const { wrap, el } = mkInput("text", "Location");
+        sb.appendChild(wrap);
+        els.push(el);
+      }
+    });
+    els[0].value = "London";   handleChange(els[0]);
+    els[1].value = "Paris";    handleChange(els[1]);
+    els[2].value = "Tokyo";    handleChange(els[2]);
+    // Clear index 2 (trailing)
+    els[2].value = "";         handleChange(els[2]);
+    expect(pageData["Location"]).toEqual(["London", "Paris"]);
+  });
+
+  it("clearing ALL values removes the key entirely", () => {
+    const els = [];
+    setupSandbox(sb => {
+      for (let i = 0; i < 2; i++) {
+        const { wrap, el } = mkInput("text", "Description");
+        sb.appendChild(wrap);
+        els.push(el);
+      }
+    });
+    els[0].value = "Hello";  handleChange(els[0]);
+    els[1].value = "World";  handleChange(els[1]);
+    els[0].value = "";       handleChange(els[0]);
+    els[1].value = "";       handleChange(els[1]);
+    expect(pageData["Description"]).toBeUndefined();
+  });
+
+  it("overwriting a value at an existing index updates in-place", () => {
+    const els = [];
+    setupSandbox(sb => {
+      for (let i = 0; i < 2; i++) {
+        const { wrap, el } = mkInput("text", "Job Title");
+        sb.appendChild(wrap);
+        els.push(el);
+      }
+    });
+    els[0].value = "Engineer"; handleChange(els[0]);
+    els[1].value = "Manager";  handleChange(els[1]);
+    els[0].value = "Director"; handleChange(els[0]);
+    expect(pageData["Job Title"]).toEqual(["Director", "Manager"]);
+  });
+
+  it("handles 5 'Skill' fields populated out of order", () => {
+    const els = [];
+    setupSandbox(sb => {
+      for (let i = 0; i < 5; i++) {
+        const { wrap, el } = mkInput("text", "Skill");
+        sb.appendChild(wrap);
+        els.push(el);
+      }
+    });
+    els[4].value = "SQL";        handleChange(els[4]);
+    els[1].value = "Python";     handleChange(els[1]);
+    els[3].value = "React";      handleChange(els[3]);
+    expect(pageData["Skill"]).toEqual([null, "Python", null, "React", "SQL"]);
+  });
+
+});
+
+// ── 5. handleChange — select / checkbox ──────────────────────────────────
+
+describe("handleChange — select and checkbox multi-fields", () => {
+
+  it("stores three select values (Employment Type) as array", () => {
+    const els = [];
+    setupSandbox(sb => {
+      for (let i = 0; i < 3; i++) {
+        const { wrap, el } = mkInput("select", "Employment Type", {
+          options: ["Full-time", "Part-time", "Contract"]
+        });
+        sb.appendChild(wrap);
+        els.push(el);
+      }
+    });
+    els[0].value = "Full-time";  handleChange(els[0]);
+    els[1].value = "Contract";   handleChange(els[1]);
+    els[2].value = "Part-time";  handleChange(els[2]);
+
+    // getValue returns option text
+    expect(pageData["Employment Type"]).toEqual(["Full-time", "Contract", "Part-time"]);
+  });
+
+  it("stores two 'Degree' select values as array", () => {
+    const els = [];
+    setupSandbox(sb => {
+      for (let i = 0; i < 2; i++) {
+        const { wrap, el } = mkInput("select", "Degree", {
+          options: ["Bachelor's", "Master's", "Ph.D."]
+        });
+        sb.appendChild(wrap);
+        els.push(el);
+      }
+    });
+    els[0].value = "Bachelor's"; handleChange(els[0]);
+    els[1].value = "Master's";   handleChange(els[1]);
+    expect(pageData["Degree"]).toEqual(["Bachelor's", "Master's"]);
+  });
+
+});
+
+// ── 6. Autofill round-trip ────────────────────────────────────────────────
+
+describe("Autofill round-trip — array savedData fills correct elements", () => {
+
+  it("autofills three 'Company' inputs from saved array", () => {
+    const els = [];
+    setupSandbox(sb => {
+      for (let i = 0; i < 3; i++) {
+        const { wrap, el } = mkInput("text", "Company");
+        sb.appendChild(wrap);
+        els.push(el);
+      }
+    });
+
+    const saved = { "Company": ["Acme", "Beta Inc", "Gamma Ltd"] };
+    runAutofill(saved);
+
+    expect(els[0].value).toBe("Acme");
+    expect(els[1].value).toBe("Beta Inc");
+    expect(els[2].value).toBe("Gamma Ltd");
+  });
+
+  it("autofill skips sparse null slots, leaves those inputs empty", () => {
+    const els = [];
+    setupSandbox(sb => {
+      for (let i = 0; i < 3; i++) {
+        const { wrap, el } = mkInput("text", "Job Title");
+        sb.appendChild(wrap);
+        els.push(el);
+      }
+    });
+
+    const saved = { "Job Title": ["Engineer", null, "Director"] };
+    runAutofill(saved);
+
+    expect(els[0].value).toBe("Engineer");
+    expect(els[1].value).toBe("");          // null → untouched
+    expect(els[2].value).toBe("Director");
+  });
+
+  it("autofill does not overwrite already-filled inputs", () => {
+    const els = [];
+    setupSandbox(sb => {
+      for (let i = 0; i < 2; i++) {
+        const { wrap, el } = mkInput("text", "Location");
+        sb.appendChild(wrap);
+        els.push(el);
+      }
+    });
+    els[0].value = "Pre-filled London";  // already has a value
+
+    const saved = { "Location": ["NYC", "Paris"] };
+    runAutofill(saved);
+
+    expect(els[0].value).toBe("Pre-filled London");  // NOT overwritten
+    expect(els[1].value).toBe("Paris");
+  });
+
+  it("autofill scalar (single field) fills only first element", () => {
+    const els = [];
+    setupSandbox(sb => {
+      for (let i = 0; i < 3; i++) {
+        const { wrap, el } = mkInput("text", "Occupation");
+        sb.appendChild(wrap);
+        els.push(el);
+      }
+    });
+
+    const saved = { "Occupation": "Engineer" }; // scalar, not array
+    runAutofill(saved);
+
+    expect(els[0].value).toBe("Engineer");
+    expect(els[1].value).toBe("");   // only first filled for scalars
+    expect(els[2].value).toBe("");
+  });
+
+  it("full experience entry round-trip: fill → read pageData → autofill new DOM", () => {
+    // Step 1: fill
+    const fillEls = { title: [], company: [], start: [], end: [] };
+    setupSandbox(sb => {
+      for (let i = 0; i < 3; i++) {
+        const t  = mkInput("text", "Job Title");
+        const c  = mkInput("text", "Company");
+        const s  = mkInput("text", "Start Year");
+        const e  = mkInput("text", "End Year");
+        [t, c, s, e].forEach(r => sb.appendChild(r.wrap));
+        fillEls.title.push(t.el);
+        fillEls.company.push(c.el);
+        fillEls.start.push(s.el);
+        fillEls.end.push(e.el);
+      }
+    });
+
+    const titles    = ["Senior Engineer", "Product Manager", "Data Scientist"];
+    const companies = ["Acme", "Beta Inc", "Gamma Ltd"];
+    const starts    = ["2020", "2017", "2014"];
+    const ends      = ["2023", "2020", "2017"];
+
+    titles.forEach((v, i)    => { fillEls.title[i].value   = v; handleChange(fillEls.title[i]); });
+    companies.forEach((v, i) => { fillEls.company[i].value = v; handleChange(fillEls.company[i]); });
+    starts.forEach((v, i)    => { fillEls.start[i].value   = v; handleChange(fillEls.start[i]); });
+    ends.forEach((v, i)      => { fillEls.end[i].value     = v; handleChange(fillEls.end[i]); });
+
+    const snapshot = JSON.parse(JSON.stringify(pageData));
+
+    expect(snapshot["Job Title"]).toEqual(titles);
+    expect(snapshot["Company"]).toEqual(companies);
+    expect(snapshot["Start Year"]).toEqual(starts);
+    expect(snapshot["End Year"]).toEqual(ends);
+
+    // Step 2: fresh DOM + autofill from snapshot
+    const newEls = { title: [], company: [], start: [], end: [] };
+    setupSandbox(sb => {
+      for (let i = 0; i < 3; i++) {
+        const t  = mkInput("text", "Job Title");
+        const c  = mkInput("text", "Company");
+        const s  = mkInput("text", "Start Year");
+        const e  = mkInput("text", "End Year");
+        [t, c, s, e].forEach(r => sb.appendChild(r.wrap));
+        newEls.title.push(t.el);
+        newEls.company.push(c.el);
+        newEls.start.push(s.el);
+        newEls.end.push(e.el);
+      }
+    });
+
+    runAutofill(snapshot);
+
+    titles.forEach((v, i)    => expect(newEls.title[i].value).toBe(v));
+    companies.forEach((v, i) => expect(newEls.company[i].value).toBe(v));
+    starts.forEach((v, i)    => expect(newEls.start[i].value).toBe(v));
+    ends.forEach((v, i)      => expect(newEls.end[i].value).toBe(v));
+  });
+
+});
+
+// ── 7. Edge cases ─────────────────────────────────────────────────────────
+
+describe("Edge cases", () => {
+
+  it("empty string value is treated as empty — key removed for single field", () => {
+    let el;
+    setupSandbox(sb => {
+      const r = mkInput("text", "Website");
+      sb.appendChild(r.wrap);
+      el = r.el;
+    });
+    el.value = "https://example.com"; handleChange(el);
+    expect(pageData["Website"]).toBe("https://example.com");
+    el.value = ""; handleChange(el);
+    expect(pageData["Website"]).toBeUndefined();
+  });
+
+  it("array grows correctly when new inputs are added after initial scan", () => {
+    const els = [];
+    setupSandbox(sb => {
+      for (let i = 0; i < 2; i++) {
+        const { wrap, el } = mkInput("text", "Certification");
+        sb.appendChild(wrap);
+        els.push(el);
+      }
+    });
+    // Simulate adding a 3rd field later (re-scan)
+    const sb = document.getElementById("sandbox");
+    const { wrap: wrap3, el: el3 } = mkInput("text", "Certification");
+    sb.appendChild(wrap3);
+    els.push(el3);
+    rebuildLabelMap(sb);
+
+    els[0].value = "AWS SAA";       handleChange(els[0]);
+    els[1].value = "GCP Architect"; handleChange(els[1]);
+    els[2].value = "CKA";           handleChange(els[2]);
+
+    expect(pageData["Certification"]).toEqual(["AWS SAA", "GCP Architect", "CKA"]);
+  });
+
+  it("filling index 2 of 3 then clearing still keeps indices 0 and 1", () => {
+    const els = [];
+    setupSandbox(sb => {
+      for (let i = 0; i < 3; i++) {
+        const { wrap, el } = mkInput("text", "Portfolio URL");
+        sb.appendChild(wrap);
+        els.push(el);
+      }
+    });
+    els[0].value = "https://a.com"; handleChange(els[0]);
+    els[1].value = "https://b.com"; handleChange(els[1]);
+    els[2].value = "https://c.com"; handleChange(els[2]);
+    els[2].value = "";              handleChange(els[2]);
+    expect(pageData["Portfolio URL"]).toEqual(["https://a.com", "https://b.com"]);
+  });
+
+  it("two different labels don't interfere with each other", () => {
+    const titles = [], companies = [];
+    setupSandbox(sb => {
+      for (let i = 0; i < 2; i++) {
+        const t = mkInput("text", "Job Title");
+        const c = mkInput("text", "Company Name");
+        sb.appendChild(t.wrap);
+        sb.appendChild(c.wrap);
+        titles.push(t.el);
+        companies.push(c.el);
+      }
+    });
+    titles[0].value   = "Engineer"; handleChange(titles[0]);
+    companies[0].value = "Acme";    handleChange(companies[0]);
+    titles[1].value   = "Manager";  handleChange(titles[1]);
+    companies[1].value = "Beta";    handleChange(companies[1]);
+
+    expect(pageData["Job Title"]).toEqual(["Engineer", "Manager"]);
+    expect(pageData["Company Name"]).toEqual(["Acme", "Beta"]);
+  });
+
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  SECTION 4 — Render results
+// ═══════════════════════════════════════════════════════════════════════════
+
+function renderResults() {
+  const resultsEl = document.getElementById("results");
+  const summaryEl = document.getElementById("summary");
+
+  let totalPass = 0, totalFail = 0;
+
+  suites.forEach(suite => {
+    const suiteDiv = document.createElement("div");
+    suiteDiv.className = "suite";
+
+    const titleDiv = document.createElement("div");
+    titleDiv.className = "suite-title";
+    titleDiv.textContent = suite.name;
+    suiteDiv.appendChild(titleDiv);
+
+    suite.tests.forEach(test => {
+      const row = document.createElement("div");
+      row.className = "test-row";
+
+      const icon = document.createElement("div");
+      icon.className = `test-icon ${test.status}`;
+      icon.textContent = test.status === "pass" ? "✓" : "✕";
+      row.appendChild(icon);
+
+      const body = document.createElement("div");
+      body.className = "test-name";
+      body.textContent = test.name;
+
+      if (test.status === "fail" && test.error) {
+        const detail = document.createElement("pre");
+        detail.className = "test-detail";
+        detail.textContent = test.error;
+        body.appendChild(detail);
+      }
+      row.appendChild(body);
+      suiteDiv.appendChild(row);
+
+      if (test.status === "pass") totalPass++;
+      else totalFail++;
+    });
+
+    resultsEl.appendChild(suiteDiv);
+  });
+
+  const total = totalPass + totalFail;
+  const allPass = totalFail === 0;
+  summaryEl.innerHTML = `
+    <span class="sum-total">${total} tests</span>
+    <span class="sum-pass">✓ ${totalPass} passed</span>
+    ${totalFail > 0 ? `<span class="sum-fail">✕ ${totalFail} failed</span>` : ""}
+    <span class="sum-badge ${allPass ? "all-pass" : "has-fail"}">
+      ${allPass ? "ALL PASS" : "FAILURES"}
+    </span>
+  `;
+}
+
+renderResults();
+</script>
+</body>
+</html>

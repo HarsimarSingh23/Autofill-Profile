@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FormSpy — Test Page</title>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,300;0,600;1,300&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --cream: #f5f0e8;
+      --ink: #1a1208;
+      --rust: #c84b2f;
+      --gold: #d4a843;
+      --sage: #5a7a5e;
+      --muted: #8a7f72;
+      --border: #d8cfc4;
+      --surface: #fdfaf5;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--cream);
+      color: var(--ink);
+      font-family: 'DM Mono', monospace;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Noise texture overlay */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 1000;
+      opacity: 0.4;
+    }
+
+    .page-wrap {
+      max-width: 780px;
+      margin: 0 auto;
+      padding: 60px 40px 100px;
+    }
+
+    /* Header */
+    .page-header {
+      margin-bottom: 64px;
+      animation: fadeUp 0.6s ease both;
+    }
+
+    .eyebrow {
+      font-size: 11px;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: var(--rust);
+      margin-bottom: 16px;
+    }
+
+    h1 {
+      font-family: 'Fraunces', serif;
+      font-size: clamp(42px, 7vw, 72px);
+      font-weight: 300;
+      line-height: 1.0;
+      color: var(--ink);
+      margin-bottom: 20px;
+    }
+
+    h1 em {
+      font-style: italic;
+      color: var(--rust);
+    }
+
+    .subtitle {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.7;
+      max-width: 480px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 20px;
+      background: var(--ink);
+      color: var(--cream);
+      font-size: 10px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      padding: 6px 14px;
+      border-radius: 2px;
+    }
+
+    .badge-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #7fff6e;
+      animation: pulse 2s ease infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    /* Sections */
+    .form-section {
+      margin-bottom: 56px;
+      animation: fadeUp 0.6s ease both;
+    }
+
+    .form-section:nth-child(2) { animation-delay: 0.1s; }
+    .form-section:nth-child(3) { animation-delay: 0.2s; }
+    .form-section:nth-child(4) { animation-delay: 0.3s; }
+    .form-section:nth-child(5) { animation-delay: 0.4s; }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 28px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .section-num {
+      font-family: 'Fraunces', serif;
+      font-size: 48px;
+      font-weight: 300;
+      color: var(--border);
+      line-height: 1;
+    }
+
+    .section-title {
+      font-family: 'Fraunces', serif;
+      font-size: 22px;
+      font-weight: 600;
+      color: var(--ink);
+    }
+
+    .section-desc {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    /* Grid */
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+    .span-2 { grid-column: span 2; }
+
+    /* Field wrapper */
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    label {
+      font-size: 10px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    /* Inputs */
+    input[type="text"],
+    input[type="email"],
+    input[type="tel"],
+    input[type="date"],
+    input[type="number"],
+    input[type="password"],
+    input[type="url"],
+    textarea,
+    select {
+      width: 100%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 12px 14px;
+      font-family: 'DM Mono', monospace;
+      font-size: 13px;
+      color: var(--ink);
+      transition: border-color 0.15s, box-shadow 0.15s;
+      appearance: none;
+      -webkit-appearance: none;
+    }
+
+    input:focus, textarea:focus, select:focus {
+      outline: none;
+      border-color: var(--rust);
+      box-shadow: 0 0 0 3px rgba(200,75,47,0.08);
+    }
+
+    textarea {
+      resize: vertical;
+      min-height: 100px;
+      line-height: 1.6;
+    }
+
+    select {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' fill='none'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%238a7f72' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 14px center;
+      padding-right: 36px;
+      cursor: pointer;
+    }
+
+    /* Range */
+    .range-wrap {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    input[type="range"] {
+      flex: 1;
+      -webkit-appearance: none;
+      height: 3px;
+      background: var(--border);
+      border-radius: 2px;
+      border: none;
+      padding: 0;
+      box-shadow: none;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--rust);
+      cursor: pointer;
+      border: 2px solid var(--cream);
+      box-shadow: 0 0 0 1px var(--rust);
+    }
+
+    input[type="range"]:focus {
+      box-shadow: none;
+    }
+
+    .range-val {
+      font-size: 13px;
+      color: var(--rust);
+      min-width: 30px;
+      text-align: right;
+    }
+
+    /* Radio & Checkbox */
+    .radio-group, .check-group {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .radio-item, .check-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      cursor: pointer;
+    }
+
+    .radio-item input, .check-item input {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--rust);
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    .radio-label, .check-label {
+      font-size: 12px;
+      color: var(--ink);
+      cursor: pointer;
+    }
+
+    /* Inline radio pills */
+    .pill-group {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .pill-option {
+      position: relative;
+    }
+
+    .pill-option input {
+      position: absolute;
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .pill-option label {
+      display: inline-block;
+      padding: 8px 16px;
+      border: 1px solid var(--border);
+      border-radius: 2px;
+      font-size: 11px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--muted);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .pill-option input:checked + label {
+      border-color: var(--rust);
+      background: var(--rust);
+      color: white;
+    }
+
+    .pill-option label:hover {
+      border-color: var(--rust);
+      color: var(--rust);
+    }
+
+    /* Submit */
+    .submit-area {
+      margin-top: 48px;
+      padding-top: 40px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      animation: fadeUp 0.6s 0.5s ease both;
+    }
+
+    .submit-note {
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    .submit-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--ink);
+      color: var(--cream);
+      border: none;
+      padding: 14px 32px;
+      font-family: 'DM Mono', monospace;
+      font-size: 12px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      cursor: pointer;
+      border-radius: 2px;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+
+    .submit-btn:hover {
+      background: var(--rust);
+      transform: translateY(-1px);
+      box-shadow: 0 8px 24px rgba(200,75,47,0.3);
+    }
+
+    .submit-btn svg {
+      transition: transform 0.2s;
+    }
+
+    .submit-btn:hover svg {
+      transform: translateX(3px);
+    }
+
+    /* Divider */
+    .divider {
+      height: 1px;
+      background: var(--border);
+      margin: 8px 0 24px;
+    }
+
+    /* Hint */
+    .hint {
+      font-size: 10px;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+
+    /* Responsive */
+    @media (max-width: 600px) {
+      .page-wrap { padding: 40px 24px 80px; }
+      .grid-2, .grid-3 { grid-template-columns: 1fr; }
+      .span-2 { grid-column: span 1; }
+    }
+  </style>
+</head>
+<body>
+<div class="page-wrap">
+
+  <header class="page-header">
+    <p class="eyebrow">FormSpy Extension — Test Environment</p>
+    <h1>Fill the <em>form,</em><br/>watch it track.</h1>
+    <p class="subtitle">Every field you type into below is captured live by the FormSpy extension. Open it from your Chrome toolbar to see the data update in real time.</p>
+    <div class="badge">
+      <div class="badge-dot"></div>
+      Tracker active — open FormSpy popup to view
+    </div>
+  </header>
+
+  <!-- Section 1: Personal Info -->
+  <section class="form-section">
+    <div class="section-header">
+      <div class="section-num">01</div>
+      <div>
+        <div class="section-title">Personal Information</div>
+        <div class="section-desc">Basic identity fields</div>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="field">
+        <label for="first_name">First Name</label>
+        <input type="text" id="first_name" name="first_name" placeholder="e.g. Jane" />
+      </div>
+      <div class="field">
+        <label for="last_name">Last Name</label>
+        <input type="text" id="last_name" name="last_name" placeholder="e.g. Doe" />
+      </div>
+      <div class="field">
+        <label for="email">Email Address</label>
+        <input type="email" id="email" name="email" placeholder="jane@example.com" />
+      </div>
+      <div class="field">
+        <label for="phone">Phone Number</label>
+        <input type="tel" id="phone" name="phone" placeholder="+1 (555) 000-0000" />
+      </div>
+      <div class="field">
+        <label for="dob">Date of Birth</label>
+        <input type="date" id="dob" name="dob" />
+      </div>
+      <div class="field">
+        <label for="age">Age</label>
+        <input type="number" id="age" name="age" placeholder="28" min="1" max="120" />
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 2: Profile -->
+  <section class="form-section">
+    <div class="section-header">
+      <div class="section-num">02</div>
+      <div>
+        <div class="section-title">Profile & Preferences</div>
+        <div class="section-desc">Dropdowns, radios, and more</div>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="field">
+        <label for="country">Country</label>
+        <select id="country" name="country">
+          <option value="">Select country...</option>
+          <option>United States</option>
+          <option>United Kingdom</option>
+          <option>Germany</option>
+          <option>Japan</option>
+          <option>Australia</option>
+          <option>Canada</option>
+          <option>France</option>
+          <option>India</option>
+          <option>Brazil</option>
+          <option>Other</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="language">Preferred Language</label>
+        <select id="language" name="language">
+          <option value="">Select language...</option>
+          <option>English</option>
+          <option>Spanish</option>
+          <option>French</option>
+          <option>German</option>
+          <option>Japanese</option>
+          <option>Portuguese</option>
+          <option>Mandarin</option>
+          <option>Arabic</option>
+        </select>
+      </div>
+      <div class="field span-2">
+        <label>Gender</label>
+        <div class="pill-group">
+          <div class="pill-option">
+            <input type="radio" name="gender" id="gender_m" value="Male" />
+            <label for="gender_m">Male</label>
+          </div>
+          <div class="pill-option">
+            <input type="radio" name="gender" id="gender_f" value="Female" />
+            <label for="gender_f">Female</label>
+          </div>
+          <div class="pill-option">
+            <input type="radio" name="gender" id="gender_nb" value="Non-binary" />
+            <label for="gender_nb">Non-binary</label>
+          </div>
+          <div class="pill-option">
+            <input type="radio" name="gender" id="gender_ns" value="Prefer not to say" />
+            <label for="gender_ns">Prefer not to say</label>
+          </div>
+        </div>
+      </div>
+      <div class="field">
+        <label for="occupation">Occupation</label>
+        <input type="text" id="occupation" name="occupation" placeholder="e.g. Software Engineer" />
+      </div>
+      <div class="field">
+        <label for="company">Company / Org</label>
+        <input type="text" id="company" name="company" placeholder="e.g. Acme Corp" />
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 3: About -->
+  <section class="form-section">
+    <div class="section-header">
+      <div class="section-num">03</div>
+      <div>
+        <div class="section-title">About You</div>
+        <div class="section-desc">Text areas and longer inputs</div>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 20px;">
+      <div class="field">
+        <label for="bio">Short Bio</label>
+        <textarea id="bio" name="bio" placeholder="Tell us a little about yourself..."></textarea>
+      </div>
+      <div class="field">
+        <label for="website">Personal Website</label>
+        <input type="url" id="website" name="website" placeholder="https://yoursite.com" />
+      </div>
+      <div class="field">
+        <label for="experience_level">Experience Level</label>
+        <div class="range-wrap">
+          <input type="range" id="experience_level" name="experience_level" min="1" max="10" value="5"
+            oninput="document.getElementById('exp-val').textContent = this.value" />
+          <span class="range-val" id="exp-val">5</span>
+        </div>
+        <p class="hint">1 = Beginner &nbsp;·&nbsp; 10 = Expert</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 4: Preferences -->
+  <section class="form-section">
+    <div class="section-header">
+      <div class="section-num">04</div>
+      <div>
+        <div class="section-title">Notifications & Interests</div>
+        <div class="section-desc">Checkboxes and toggles</div>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="field">
+        <label>Email Notifications</label>
+        <div class="check-group">
+          <label class="check-item">
+            <input type="checkbox" name="notify_product" value="Product updates" />
+            <span class="check-label">Product updates</span>
+          </label>
+          <label class="check-item">
+            <input type="checkbox" name="notify_newsletter" value="Weekly newsletter" />
+            <span class="check-label">Weekly newsletter</span>
+          </label>
+          <label class="check-item">
+            <input type="checkbox" name="notify_security" value="Security alerts" />
+            <span class="check-label">Security alerts</span>
+          </label>
+        </div>
+      </div>
+      <div class="field">
+        <label>Interests</label>
+        <div class="check-group">
+          <label class="check-item">
+            <input type="checkbox" name="interest_design" value="Design" />
+            <span class="check-label">Design</span>
+          </label>
+          <label class="check-item">
+            <input type="checkbox" name="interest_engineering" value="Engineering" />
+            <span class="check-label">Engineering</span>
+          </label>
+          <label class="check-item">
+            <input type="checkbox" name="interest_data" value="Data & AI" />
+            <span class="check-label">Data & AI</span>
+          </label>
+          <label class="check-item">
+            <input type="checkbox" name="interest_product" value="Product" />
+            <span class="check-label">Product</span>
+          </label>
+        </div>
+      </div>
+      <div class="field span-2">
+        <label for="referral">How did you hear about us?</label>
+        <select id="referral" name="referral">
+          <option value="">Select one...</option>
+          <option>Search engine</option>
+          <option>Social media</option>
+          <option>Friend / colleague</option>
+          <option>Blog or article</option>
+          <option>Podcast</option>
+          <option>Conference or event</option>
+          <option>Other</option>
+        </select>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 5: Security -->
+  <section class="form-section">
+    <div class="section-header">
+      <div class="section-num">05</div>
+      <div>
+        <div class="section-title">Account Security</div>
+        <div class="section-desc">Password and verification fields</div>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="field">
+        <label for="username">Username</label>
+        <input type="text" id="username" name="username" placeholder="@username" />
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" placeholder="••••••••" />
+      </div>
+      <div class="field">
+        <label for="security_question">Security Question</label>
+        <select id="security_question" name="security_question">
+          <option value="">Choose a question...</option>
+          <option>What was your first pet's name?</option>
+          <option>What city were you born in?</option>
+          <option>What's your mother's maiden name?</option>
+          <option>What was your first school?</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="security_answer">Answer</label>
+        <input type="text" id="security_answer" name="security_answer" placeholder="Your answer" />
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 6: Experience (repeating group) -->
+  <section class="form-section">
+    <div class="section-header">
+      <div class="section-num">06</div>
+      <div>
+        <div class="section-title">Work Experience</div>
+        <div class="section-desc">Repeating group — add multiple jobs to test array tracking</div>
+      </div>
+    </div>
+
+    <div id="experience-list" style="display:flex;flex-direction:column;gap:24px;">
+
+      <div class="experience-entry" style="border:1px solid var(--border);border-radius:6px;padding:20px;">
+        <p style="font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--rust);margin-bottom:16px;">Job #1</p>
+        <div class="grid-2">
+          <div class="field">
+            <label for="company_1">Company</label>
+            <input type="text" id="company_1" name="company_1" placeholder="e.g. Acme Corp" />
+          </div>
+          <div class="field">
+            <label for="job_title_1">Job Title</label>
+            <input type="text" id="job_title_1" name="job_title_1" placeholder="e.g. Software Engineer" />
+          </div>
+          <div class="field">
+            <label for="start_date_1">Start Date</label>
+            <input type="text" id="start_date_1" name="start_date_1" placeholder="e.g. Jan 2020" />
+          </div>
+          <div class="field">
+            <label for="end_date_1">End Date</label>
+            <input type="text" id="end_date_1" name="end_date_1" placeholder="e.g. Dec 2022 or Present" />
+          </div>
+          <div class="field span-2">
+            <label for="job_desc_1">Description</label>
+            <textarea id="job_desc_1" name="job_desc_1" placeholder="What did you do there?"></textarea>
+          </div>
+        </div>
+      </div>
+
+      <div class="experience-entry" style="border:1px solid var(--border);border-radius:6px;padding:20px;">
+        <p style="font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--rust);margin-bottom:16px;">Job #2</p>
+        <div class="grid-2">
+          <div class="field">
+            <label for="company_2">Company</label>
+            <input type="text" id="company_2" name="company_2" placeholder="e.g. Globex Inc" />
+          </div>
+          <div class="field">
+            <label for="job_title_2">Job Title</label>
+            <input type="text" id="job_title_2" name="job_title_2" placeholder="e.g. Senior Engineer" />
+          </div>
+          <div class="field">
+            <label for="start_date_2">Start Date</label>
+            <input type="text" id="start_date_2" name="start_date_2" placeholder="e.g. Jan 2023" />
+          </div>
+          <div class="field">
+            <label for="end_date_2">End Date</label>
+            <input type="text" id="end_date_2" name="end_date_2" placeholder="e.g. Present" />
+          </div>
+          <div class="field span-2">
+            <label for="job_desc_2">Description</label>
+            <textarea id="job_desc_2" name="job_desc_2" placeholder="What did you do there?"></textarea>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+
+    <p class="submit-note">All fields above are tracked live.<br/>Open FormSpy from the Chrome toolbar to inspect.</p>
+    <button class="submit-btn" type="button">
+      Submit Form
+      <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+      </svg>
+    </button>
+  </div>
+
+</div>
+</body>
+</html>
