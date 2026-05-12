@@ -64,12 +64,10 @@ function sanitizeKey(key) {
 
 // ─── Repeated-field detection ─────────────────────────────────────────────────
 
+// All chained :not() on a single input rule so that an input[type='submit']
+// doesn't sneak in by satisfying a different :not() in the list.
 const SELECTOR = [
-  "input:not([type='hidden'])",
-  "input:not([type='submit'])",
-  "input:not([type='button'])",
-  "input:not([type='reset'])",
-  "input:not([type='image'])",
+  "input:not([type='hidden']):not([type='submit']):not([type='button']):not([type='reset']):not([type='image'])",
   "textarea",
   "select"
 ].join(", ");
@@ -216,11 +214,95 @@ function similarity(a, b) {
   return overlap / Math.max(ta.size, tb.size);
 }
 
-function findBestMatch(fieldLabel, savedData) {
-  const THRESHOLD = 0.5;
+// ─── Semantic / synonym matching ──────────────────────────────────────────────
+
+const SYNONYMS = {
+  // Name fields
+  "firstname": "firstname", "fname": "firstname", "givenname": "firstname",
+  "forename": "firstname", "first": "firstname",
+  "lastname": "lastname",  "lname": "lastname",  "surname": "lastname",
+  "familyname": "lastname", "last": "lastname",
+  "middlename": "middlename", "mname": "middlename", "middle": "middlename",
+  "fullname": "fullname", "name": "fullname", "displayname": "fullname",
+  // Contact
+  "email": "email", "emailaddress": "email", "mail": "email",
+  "emailid": "email", "e-mail": "email",
+  "phone": "phone", "phonenumber": "phone", "telephone": "phone",
+  "tel": "phone", "mobile": "phone", "cell": "phone", "cellphone": "phone",
+  "contactnumber": "phone",
+  // Address
+  "address": "address", "streetaddress": "address", "street": "address",
+  "address1": "address", "addressline1": "address",
+  "address2": "address2", "apt": "address2", "suite": "address2",
+  "addressline2": "address2",
+  "city": "city", "town": "city", "locality": "city",
+  "state": "state", "province": "state", "region": "state",
+  "zip": "zip", "zipcode": "zip", "postalcode": "zip",
+  "postcode": "zip", "pincode": "zip",
+  "country": "country", "nation": "country",
+  // Auth
+  "username": "username", "user": "username", "login": "username",
+  "userid": "username", "handle": "username",
+  "password": "password", "pass": "password", "passwd": "password",
+  "passphrase": "password", "pin": "password",
+  // Personal info
+  "dob": "birthdate", "dateofbirth": "birthdate", "birthday": "birthdate",
+  "birthdate": "birthdate", "birthyear": "birthdate",
+  "gender": "gender", "sex": "gender",
+  "age": "age",
+  // Organization / work
+  "company": "company", "organization": "company", "org": "company",
+  "employer": "company", "workplace": "company", "business": "company",
+  "jobtitle": "jobtitle", "title": "jobtitle", "position": "jobtitle",
+  "role": "jobtitle", "occupation": "jobtitle", "designation": "jobtitle",
+  "department": "department", "division": "department",
+  // Web
+  "website": "website", "url": "website", "homepage": "website",
+  "linkedin": "linkedin", "linkedinurl": "linkedin",
+  "github": "github", "githuburl": "github",
+  // Misc
+  "description": "description", "bio": "description", "about": "description",
+  "summary": "description", "notes": "description",
+  "message": "message", "comment": "message", "feedback": "message",
+};
+
+/**
+ * Converts a label string to a set of canonical tokens using the SYNONYMS map.
+ * Tokens not in the map pass through unchanged.
+ */
+function toCanonical(label) {
+  return tokenize(label).map(t => {
+    // Strip common noise suffixes before lookup
+    const clean = t.replace(/[^a-z0-9]/g, "");
+    return SYNONYMS[clean] || clean;
+  });
+}
+
+/**
+ * Jaccard similarity on canonical token sets — semantic-aware.
+ */
+function semanticSim(a, b) {
+  const ta = new Set(toCanonical(a));
+  const tb = new Set(toCanonical(b));
+  if (!ta.size || !tb.size) return 0;
+  let overlap = 0;
+  ta.forEach(t => { if (tb.has(t)) overlap++; });
+  return overlap / (ta.size + tb.size - overlap);
+}
+
+/**
+ * Like findBestMatch but first tries exact token match, then semantic match,
+ * then falls back to the original Jaccard similarity.
+ */
+function semanticFindBestMatch(fieldLabel, savedData) {
+  const THRESHOLD = 0.4; // slightly lower because canonical sets are smaller
   let bestKey = null, bestScore = 0;
+
   for (const savedKey of Object.keys(savedData)) {
-    const score = similarity(fieldLabel, savedKey);
+    // Combine semantic and raw scores (weighted average)
+    const semScore = semanticSim(fieldLabel, savedKey);
+    const rawScore = similarity(fieldLabel, savedKey);
+    const score = Math.max(semScore, rawScore);
     if (score > bestScore) { bestScore = score; bestKey = savedKey; }
   }
   return bestScore >= THRESHOLD ? { key: bestKey, value: savedData[bestKey] } : null;
@@ -264,7 +346,7 @@ function runAutofill(savedData) {
   let filled = 0;
 
   for (const [pageLabel, els] of Object.entries(labelMap)) {
-    const match = findBestMatch(pageLabel, savedData);
+    const match = semanticFindBestMatch(pageLabel, savedData);
     if (!match) continue;
 
     const savedValue = match.value;

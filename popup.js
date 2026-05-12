@@ -211,14 +211,31 @@ function persistEdit() {
   chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
     if (!tabs[0]?.url) return;
     try {
-      const url     = new URL(tabs[0].url);
+      const url       = new URL(tabs[0].url);
       const pageKey   = `page::${url.origin}${url.pathname}`;
       const domainKey = `domain::${url.hostname}`;
       chrome.storage.local.get([pageKey, domainKey], result => {
         const updates = {};
-        if (result[pageKey])   updates[pageKey]   = { ...result[pageKey],   ...currentData };
-        if (result[domainKey]) updates[domainKey] = { ...result[domainKey], ...currentData };
-        if (Object.keys(updates).length) chrome.storage.local.set(updates);
+
+        // For the page key, replace entirely with currentData so that
+        // deleted fields don't linger. Always write (even if key didn't exist).
+        updates[pageKey] = { ...currentData };
+
+        // For the domain key, merge so other paths on this domain aren't lost,
+        // but honour deletions by removing keys absent from currentData that
+        // were previously contributed by this page.
+        const domainBase = result[domainKey] || {};
+        const domainPrev = result[pageKey]   || {};
+        const merged = { ...domainBase };
+        // Remove keys that used to be in this page's record but are now gone
+        for (const k of Object.keys(domainPrev)) {
+          if (!(k in currentData)) delete merged[k];
+        }
+        // Apply current edits
+        Object.assign(merged, currentData);
+        updates[domainKey] = merged;
+
+        chrome.storage.local.set(updates);
       });
     } catch (_) {}
   });
@@ -363,8 +380,18 @@ document.getElementById("btn-autofill").addEventListener("click", () => {
 
 document.getElementById("btn-clear").addEventListener("click", () => {
   currentData = {};
-  saveCurrentData();
+  // Clear the live key and the underlying page/domain storage keys
   chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
+    const keysToRemove = ["formTrackerData"];
+    if (tabs[0]?.url) {
+      try {
+        const url = new URL(tabs[0].url);
+        keysToRemove.push(`page::${url.origin}${url.pathname}`);
+        keysToRemove.push(`domain::${url.hostname}`);
+      } catch (_) {}
+    }
+    chrome.storage.local.remove(keysToRemove);
+    chrome.storage.local.set({ formTrackerData: {} });
     if (tabs[0]) chrome.tabs.sendMessage(tabs[0].id, { action: "clear" });
   });
   renderFields();
