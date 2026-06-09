@@ -310,6 +310,28 @@ function semanticFindBestMatch(fieldLabel, savedData) {
 
 // ─── Autofill ─────────────────────────────────────────────────────────────────
 
+/**
+ * Returns true if the field already has a user-supplied value and should not
+ * be overwritten by autofill.
+ *
+ * - text/textarea/etc: non-empty value string
+ * - checkbox: already checked
+ * - radio group (els = all radios sharing this label): any sibling is checked
+ * - select: a non-default option is selected (selectedIndex > 0 OR value !== "")
+ */
+function isAlreadyFilled(el, siblingEls) {
+  if (el.type === "checkbox") return el.checked;
+  if (el.type === "radio")    return (siblingEls || [el]).some(r => r.checked);
+  if (el.tagName === "SELECT") {
+    // Consider filled only if user chose a non-first option OR value is non-empty
+    // and there is no blank placeholder option at index 0.
+    const hasBlankPlaceholder = el.options[0]?.value === "";
+    if (hasBlankPlaceholder) return el.selectedIndex > 0;
+    return !!el.value?.trim();
+  }
+  return !!el.value?.trim();
+}
+
 function autofillElement(el, value) {
   if (typeof value === "boolean") {
     if (el.type === "checkbox") { el.checked = value; el.dispatchEvent(new Event("change", { bubbles: true })); }
@@ -355,16 +377,24 @@ function runAutofill(savedData) {
       savedValue.forEach((val, i) => {
         if (val == null) return;
         const el = els[i];
-        if (!el || el.value?.trim()) return;
+        if (!el || isAlreadyFilled(el, els)) return;
         autofillElement(el, val);
         filled++;
       });
     } else {
+      // For radio groups every sibling must be iterated so autofillElement can
+      // find the right option; track whether we already counted this group.
+      let radioGroupCounted = false;
       els.forEach((el, i) => {
-        if (el.value?.trim()) return;
-        if (i > 0 && el.type !== "radio") return; // only first instance for scalars
-        autofillElement(el, savedValue);
-        filled++;
+        if (isAlreadyFilled(el, els)) return;
+        if (el.type === "radio") {
+          autofillElement(el, savedValue);
+          if (!radioGroupCounted) { filled++; radioGroupCounted = true; }
+        } else {
+          if (i > 0) return; // only first instance for scalar non-radio fields
+          autofillElement(el, savedValue);
+          filled++;
+        }
       });
     }
   }
@@ -440,7 +470,7 @@ observer.observe(document.body, { childList: true, subtree: true });
 chrome.runtime.onMessage.addListener(msg => {
   if (msg.action === "clear") {
     Object.keys(pageData).forEach(k => delete pageData[k]);
-    chrome.storage.local.set({ formTrackerData: {} });
+    // popup already removed formTrackerData from storage; just clear in-memory state
   }
   if (msg.action === "autofill") {
     const pageKey   = getPageKey();
