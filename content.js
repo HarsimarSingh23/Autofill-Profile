@@ -103,11 +103,21 @@ function isRadioGroup(els) {
 
 const pageData = {}; // { label: scalar | array }
 const attached = new WeakSet();
+// Labels the user has intentionally cleared this session — must propagate to
+// stored page/domain records, otherwise unchecking a checkbox or wiping a text
+// field still autofills the old value on next page load.
+const clearedLabels = new Set();
 
 function getValue(el) {
   if (el.type === "checkbox") return el.checked;
   if (el.type === "radio")    return el.checked ? el.value : null;
-  if (el.tagName === "SELECT") return el.options[el.selectedIndex]?.text || el.value;
+  if (el.tagName === "SELECT") {
+    const opt = el.options[el.selectedIndex];
+    if (!opt) return "";
+    // Don't save the placeholder option as a real value
+    if (el.selectedIndex === 0 && (opt.disabled || opt.value === "")) return "";
+    return (opt.text || el.value || "").trim();
+  }
   return el.value;
 }
 
@@ -120,8 +130,13 @@ function handleChange(el) {
 
   // Radio groups share a label across siblings — treat as scalar single-choice.
   if (total === 1 || isRadioGroup(group)) {
-    if (isEmpty) delete pageData[label];
-    else         pageData[label] = value;
+    if (isEmpty) {
+      delete pageData[label];
+      clearedLabels.add(label);
+    } else {
+      pageData[label] = value;
+      clearedLabels.delete(label);
+    }
   } else {
     // Ensure array of correct length
     if (!Array.isArray(pageData[label])) {
@@ -137,8 +152,13 @@ function handleChange(el) {
     const arr = pageData[label];
     let last = -1;
     arr.forEach((v, i) => { if (v !== null && v !== undefined) last = i; });
-    if (last === -1) delete pageData[label];
-    else             pageData[label] = arr.slice(0, last + 1);
+    if (last === -1) {
+      delete pageData[label];
+      clearedLabels.add(label);
+    } else {
+      pageData[label] = arr.slice(0, last + 1);
+      clearedLabels.delete(label);
+    }
   }
 
   schedulePersist();
@@ -156,6 +176,13 @@ function schedulePersist() {
 function persistToDB() {
   // Snapshot current data to avoid mutation during async get
   const snapshot = JSON.parse(JSON.stringify(pageData));
+  // Mark intentionally-cleared labels with `null` so the merge step removes
+  // them from stored records (otherwise old values resurrect on next load).
+  const deletions = Array.from(clearedLabels);
+  const mergeInput = { ...snapshot };
+  for (const lbl of deletions) {
+    if (!(lbl in mergeInput)) mergeInput[lbl] = null;
+  }
 
   const pageKey   = getPageKey();
   const domainKey = getDomainKey();
@@ -164,6 +191,7 @@ function persistToDB() {
     function mergeData(existing, incoming) {
       const out = { ...existing };
       for (const [k, v] of Object.entries(incoming)) {
+        if (v === null) { delete out[k]; continue; } // explicit deletion
         if (Array.isArray(v)) {
           const exArr = Array.isArray(out[k]) ? out[k] : (out[k] != null ? [out[k]] : []);
           const len   = Math.max(exArr.length, v.length);
@@ -179,8 +207,8 @@ function persistToDB() {
       return out;
     }
 
-    const merged       = mergeData(result[pageKey]   || {}, snapshot);
-    const domainMerged = mergeData(result[domainKey] || {}, snapshot);
+    const merged       = mergeData(result[pageKey]   || {}, mergeInput);
+    const domainMerged = mergeData(result[domainKey] || {}, mergeInput);
 
     chrome.storage.local.set({
       [pageKey]:       merged,
@@ -507,9 +535,22 @@ function boot() {
 
 boot();
 
-// Watch for dynamically added fields (SPAs, lazy forms)
+// Watch for dynamically added fields (SPAs, lazy forms).
+// Only re-scan when added nodes actually contain input-like elements —
+// otherwise every animation/text change retriggers a full DOM walk.
 let scanDebounce = null;
-const observer = new MutationObserver(() => {
+function mutationHasFormFields(mutations) {
+  for (const m of mutations) {
+    for (const node of m.addedNodes) {
+      if (node.nodeType !== 1) continue; // ELEMENT_NODE
+      if (node.matches?.("input,select,textarea")) return true;
+      if (node.querySelector?.("input,select,textarea")) return true;
+    }
+  }
+  return false;
+}
+const observer = new MutationObserver(mutations => {
+  if (!mutationHasFormFields(mutations)) return;
   if (scanDebounce) clearTimeout(scanDebounce);
   scanDebounce = setTimeout(scanAndAttach, 200);
 });
