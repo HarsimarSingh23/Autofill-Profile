@@ -90,18 +90,34 @@ function getLabelIndex(el) {
   const label = sanitizeKey(getFieldLabel(el)) || "field";
   const arr   = labelMap[label] || [el];
   const index = arr.indexOf(el);
-  return { label, index: Math.max(index, 0), total: arr.length };
+  return { label, index: Math.max(index, 0), total: arr.length, group: arr };
+}
+
+// A radio group sharing one legend/label maps multiple elements to one label,
+// but conceptually it's a single-choice scalar — not a repeating-field array.
+function isRadioGroup(els) {
+  return els.length > 1 && els.every(e => e.type === "radio");
 }
 
 // ─── In-memory page state ─────────────────────────────────────────────────────
 
 const pageData = {}; // { label: scalar | array }
 const attached = new WeakSet();
+// Labels the user has intentionally cleared this session — must propagate to
+// stored page/domain records, otherwise unchecking a checkbox or wiping a text
+// field still autofills the old value on next page load.
+const clearedLabels = new Set();
 
 function getValue(el) {
   if (el.type === "checkbox") return el.checked;
   if (el.type === "radio")    return el.checked ? el.value : null;
-  if (el.tagName === "SELECT") return el.options[el.selectedIndex]?.text || el.value;
+  if (el.tagName === "SELECT") {
+    const opt = el.options[el.selectedIndex];
+    if (!opt) return "";
+    // Don't save the placeholder option as a real value
+    if (el.selectedIndex === 0 && (opt.disabled || opt.value === "")) return "";
+    return (opt.text || el.value || "").trim();
+  }
   return el.value;
 }
 
@@ -109,12 +125,18 @@ function handleChange(el) {
   const value = getValue(el);
   if (el.type === "radio" && value === null) return;
 
-  const { label, index, total } = getLabelIndex(el);
+  const { label, index, total, group } = getLabelIndex(el);
   const isEmpty = value === "" || value === undefined || value === null || value === false;
 
-  if (total === 1) {
-    if (isEmpty) delete pageData[label];
-    else         pageData[label] = value;
+  // Radio groups share a label across siblings — treat as scalar single-choice.
+  if (total === 1 || isRadioGroup(group)) {
+    if (isEmpty) {
+      delete pageData[label];
+      clearedLabels.add(label);
+    } else {
+      pageData[label] = value;
+      clearedLabels.delete(label);
+    }
   } else {
     // Ensure array of correct length
     if (!Array.isArray(pageData[label])) {
@@ -130,8 +152,13 @@ function handleChange(el) {
     const arr = pageData[label];
     let last = -1;
     arr.forEach((v, i) => { if (v !== null && v !== undefined) last = i; });
-    if (last === -1) delete pageData[label];
-    else             pageData[label] = arr.slice(0, last + 1);
+    if (last === -1) {
+      delete pageData[label];
+      clearedLabels.add(label);
+    } else {
+      pageData[label] = arr.slice(0, last + 1);
+      clearedLabels.delete(label);
+    }
   }
 
   schedulePersist();
@@ -149,6 +176,13 @@ function schedulePersist() {
 function persistToDB() {
   // Snapshot current data to avoid mutation during async get
   const snapshot = JSON.parse(JSON.stringify(pageData));
+  // Mark intentionally-cleared labels with `null` so the merge step removes
+  // them from stored records (otherwise old values resurrect on next load).
+  const deletions = Array.from(clearedLabels);
+  const mergeInput = { ...snapshot };
+  for (const lbl of deletions) {
+    if (!(lbl in mergeInput)) mergeInput[lbl] = null;
+  }
 
   const pageKey   = getPageKey();
   const domainKey = getDomainKey();
@@ -157,6 +191,7 @@ function persistToDB() {
     function mergeData(existing, incoming) {
       const out = { ...existing };
       for (const [k, v] of Object.entries(incoming)) {
+        if (v === null) { delete out[k]; continue; } // explicit deletion
         if (Array.isArray(v)) {
           const exArr = Array.isArray(out[k]) ? out[k] : (out[k] != null ? [out[k]] : []);
           const len   = Math.max(exArr.length, v.length);
@@ -172,8 +207,8 @@ function persistToDB() {
       return out;
     }
 
-    const merged       = mergeData(result[pageKey]   || {}, snapshot);
-    const domainMerged = mergeData(result[domainKey] || {}, snapshot);
+    const merged       = mergeData(result[pageKey]   || {}, mergeInput);
+    const domainMerged = mergeData(result[domainKey] || {}, mergeInput);
 
     chrome.storage.local.set({
       [pageKey]:       merged,
@@ -201,8 +236,39 @@ function scanAndAttach() {
 
 // ─── Fuzzy matching ───────────────────────────────────────────────────────────
 
+// Common multi-word labels that must collapse to a single canonical token
+// BEFORE tokenization, otherwise "First Name" and "Name" both expose a "name"
+// token that the synonym map then aliases to "fullname", producing false
+// matches (saved fullname autofilled into "First Name" inputs).
+const BIGRAMS = {
+  "first name":    "firstname",
+  "last name":     "lastname",
+  "middle name":   "middlename",
+  "full name":     "fullname",
+  "user name":     "username",
+  "email address": "email",
+  "phone number":  "phone",
+  "mobile number": "phone",
+  "date of birth": "birthdate",
+  "zip code":      "zip",
+  "postal code":   "zip",
+  "post code":     "zip",
+  "street address":"address",
+  "address line 1":"address",
+  "address line 2":"address2",
+  "job title":     "jobtitle",
+};
+
+function normalizeBigrams(str) {
+  let s = " " + String(str).toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim() + " ";
+  for (const [bg, canonical] of Object.entries(BIGRAMS)) {
+    s = s.split(" " + bg + " ").join(" " + canonical + " ");
+  }
+  return s.trim();
+}
+
 function tokenize(str) {
-  return str.toLowerCase().replace(/[^a-z0-9\s]/g, " ").trim().split(/\s+/).filter(Boolean);
+  return normalizeBigrams(str).split(/\s+/).filter(Boolean);
 }
 
 function similarity(a, b) {
@@ -323,10 +389,12 @@ function isAlreadyFilled(el, siblingEls) {
   if (el.type === "checkbox") return el.checked;
   if (el.type === "radio")    return (siblingEls || [el]).some(r => r.checked);
   if (el.tagName === "SELECT") {
-    // Consider filled only if user chose a non-first option OR value is non-empty
-    // and there is no blank placeholder option at index 0.
-    const hasBlankPlaceholder = el.options[0]?.value === "";
-    if (hasBlankPlaceholder) return el.selectedIndex > 0;
+    // First option is treated as a placeholder when it has empty value OR is
+    // disabled — both are common patterns. In that case the select is only
+    // "filled" if the user picked something past index 0.
+    const first = el.options[0];
+    const hasPlaceholder = !!first && (first.value === "" || first.disabled);
+    if (hasPlaceholder) return el.selectedIndex > 0;
     return !!el.value?.trim();
   }
   return !!el.value?.trim();
@@ -338,9 +406,12 @@ function autofillElement(el, value) {
     return;
   }
   if (el.tagName === "SELECT") {
+    const target = String(value).trim().toLowerCase();
+    if (!target) return; // never match an empty placeholder
     for (const opt of el.options) {
-      if (opt.text.toLowerCase()  === String(value).toLowerCase() ||
-          opt.value.toLowerCase() === String(value).toLowerCase()) {
+      const optText  = (opt.text  || "").trim().toLowerCase();
+      const optValue = (opt.value || "").trim().toLowerCase();
+      if (optText === target || optValue === target) {
         el.value = opt.value;
         el.dispatchEvent(new Event("change", { bubbles: true }));
         break;
@@ -371,7 +442,14 @@ function runAutofill(savedData) {
     const match = semanticFindBestMatch(pageLabel, savedData);
     if (!match) continue;
 
-    const savedValue = match.value;
+    let savedValue = match.value;
+
+    // Backward-compat: older versions saved radio groups as arrays. If the
+    // current page's matching elements are a radio group, collapse to scalar.
+    if (Array.isArray(savedValue) && isRadioGroup(els)) {
+      savedValue = savedValue.find(v => v != null) ?? null;
+      if (savedValue == null) continue;
+    }
 
     if (Array.isArray(savedValue)) {
       savedValue.forEach((val, i) => {
@@ -457,9 +535,22 @@ function boot() {
 
 boot();
 
-// Watch for dynamically added fields (SPAs, lazy forms)
+// Watch for dynamically added fields (SPAs, lazy forms).
+// Only re-scan when added nodes actually contain input-like elements —
+// otherwise every animation/text change retriggers a full DOM walk.
 let scanDebounce = null;
-const observer = new MutationObserver(() => {
+function mutationHasFormFields(mutations) {
+  for (const m of mutations) {
+    for (const node of m.addedNodes) {
+      if (node.nodeType !== 1) continue; // ELEMENT_NODE
+      if (node.matches?.("input,select,textarea")) return true;
+      if (node.querySelector?.("input,select,textarea")) return true;
+    }
+  }
+  return false;
+}
+const observer = new MutationObserver(mutations => {
+  if (!mutationHasFormFields(mutations)) return;
   if (scanDebounce) clearTimeout(scanDebounce);
   scanDebounce = setTimeout(scanAndAttach, 200);
 });

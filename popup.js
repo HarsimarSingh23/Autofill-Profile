@@ -22,12 +22,15 @@ function escapeHtml(s) {
   return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
 
-function syntaxHighlight(json) {
-  return json
-    .replace(/("[\w\s\-\/&]+")\s*:/g, '<span class="key">$1</span>:')
-    .replace(/:\s*(".*?")/g,           ': <span class="str">$1</span>')
-    .replace(/:\s*(true|false)/g,      ': <span class="bool">$1</span>')
-    .replace(/:\s*(\d+\.?\d*)/g,       ': <span class="num">$1</span>');
+function syntaxHighlight(escapedJson) {
+  // Input has already been run through escapeHtml — quote chars are now &quot;.
+  // The previous version still matched on raw `"` which never appeared,
+  // leaving the JSON panel un-highlighted.
+  return escapedJson
+    .replace(/(&quot;[^&]+?&quot;)(\s*:)/g, '<span class="key">$1</span>$2')
+    .replace(/:\s*(&quot;.*?&quot;)/g,      ': <span class="str">$1</span>')
+    .replace(/:\s*(true|false)/g,            ': <span class="bool">$1</span>')
+    .replace(/:\s*(-?\d+\.?\d*)/g,           ': <span class="num">$1</span>');
 }
 
 function showToast(msg, duration = 1800) {
